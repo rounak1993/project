@@ -1,0 +1,230 @@
+#include "TinyGPS++.h"
+#include "SoftwareSerial.h"
+
+#define led 9 // BUZZER/LED
+#define sw 5 // RESET
+#define sos 6 // SOS BUTTON
+#define toggleSwitch 8 // Toggle Switch for Auto and Manual (high/low)
+
+SoftwareSerial serial_connection(10,11);//RX=pin 11 Tx=pin 10
+TinyGPSPlus gps;
+
+String message = "Lat: ,\nLong: ";
+String lat = "", lng = "";
+
+enum SensitivityLevel {
+  one,
+  two,
+  three
+};
+
+/*
+  The circuit:
+  - analog 0: accelerometer self test
+  - analog 1: z-axis
+  - analog 2: y-axis
+  - analog 3: x-axis
+  - analog 4: ground
+  - analog 5: vcc
+
+*/
+
+// these constants describe the pins. They won't change:
+const int groundpin = 18;             // analog input pin 4 -- ground
+const int powerpin = 19;              // analog input pin 5 -- voltage
+const int xpin = A3;                  // x-axis of the accelerometer
+const int ypin = A2;                  // y-axis
+const int zpin = A1;                  // z-axis (only on 3-axis models)
+
+const SensitivityLevel sensitivity = one; // Sensitivity - one/two/three
+
+double dsx;
+double dsy;
+double dsz;
+
+int fx=0;
+int fy=0;
+int fz=0;
+
+
+int ll=3;
+int ul=10;
+
+String phone = "9433531791";
+
+unsigned long previousMillis = 0;
+int buttonState = 0;  // 0 = not pressed   --- 1 = long pressed --- 2 short pressed
+int DURATION_IN_MILLIS = 2000; // FOR BUTTON PRESS & HOLD
+int DURATION_BUZZER = 20000;
+
+void setup() {
+  // initialize the serial communications:
+  Serial.begin(9600);
+
+  // Provide ground and power by using the analog inputs as normal digital pins.
+  // This makes it possible to directly connect the breakout board to the
+  // Arduino. If you use the normal 5V and GND pins on the Arduino,
+  // you can remove these lines.
+  pinMode(groundpin, OUTPUT);
+  pinMode(powerpin, OUTPUT);
+  pinMode(led,OUTPUT);
+  pinMode(sw,INPUT);
+  pinMode(sos,INPUT);
+  digitalWrite(groundpin, LOW);
+  digitalWrite(powerpin, HIGH);
+  
+    pinMode(13,OUTPUT);
+    pinMode(toggleSwitch, INPUT);
+
+    Serial.begin(9600);
+    digitalWrite(13,LOW);
+    digitalWrite(led,HIGH);
+    delay(2000);
+    Serial.println("AT");
+    delay(2000);
+    if(Serial.readString().indexOf("OK")== -1)
+    {
+      digitalWrite(13,HIGH);// idicating GSM fail
+      delay(2000);
+    }
+    Serial.println("AT+CMGF=1");
+    delay(2000);
+    digitalWrite(led,LOW);
+
+    // GPS Setup
+    delay(2000);//
+    serial_connection.begin(9600);
+    Serial.println("GPS Start");
+
+    switch (sensitivity) {
+      
+      case one:
+        ll = 3;
+        ul = 10;
+        break;
+        
+      case two:
+        ll = 7;
+        ul = 14;
+        break;
+        
+      case three:
+        ll = 10;
+        ul = 17;
+    }
+}
+
+void loop() {
+
+
+  if(Serial.available()>0)
+  {
+    while(serial_connection.available())
+    {
+      gps.encode(serial_connection.read());
+    }
+    if(gps.location.isUpdated())
+    {
+      lat = String(gps.location.lat(),4);
+      lng = String(gps.location.lng(),4);
+    }
+  }
+
+  checkSOSSwitchStatus();
+
+  if (digitalRead(toggleSwitch)) {
+    return;
+  }
+  
+  long t1=millis();
+  int x1=analogRead(xpin);  //x-value fetched at time t1 s
+  int y1=analogRead(ypin);  //y-value fetched at time t1 s
+  int z1=analogRead(zpin);  //z-value fetched at time t1 s
+  delay(10);
+  long t2=millis();
+  int x2=analogRead(xpin);  //x-value fetched at time t1+0.01 s
+  int y2=analogRead(ypin);  //y-value fetched at time t1+0.01 s
+  int z2=analogRead(zpin);  //z-value fetched at time t1+0.01 s
+  
+  dsx=abs((double)x2-(double)x1)/(double)(t2-t1); //average change of x-value w.r.t t1,t1+0.01
+  dsy=abs((double)y2-(double)y1)/(double)(t2-t1); //average change of y-value w.r.t t1,t1+0.01
+  dsz=abs((double)z2-(double)z1)/(double)(t2-t1); //average change of z-value w.r.t t1,t1+0.01
+
+  Serial.print(dsx);
+  Serial.print(",");
+  Serial.print(dsy);
+  Serial.print(",");
+  Serial.println(dsz);
+
+  if(dsx>ll && dsx<ul)
+  {
+    emergencyAction();
+  }
+  else if(dsy>ll  && dsy<ul)
+  {
+    emergencyAction();
+  }
+  else if(dsz>ll && dsz<ul)
+  {
+    emergencyAction();
+  }
+  delay(100);
+}
+
+void emergencyAction() {
+
+  Serial.println("PROBLEM");
+   // delay(1000);
+    long tt1=millis();
+    while(digitalRead(sw)==LOW)
+    {
+      long tt2=millis();
+      if(tt2-tt1>DURATION_BUZZER)
+      {
+       // Serial.println("SEND SMS");
+       SMSsender(phone,"Emergency Service Required");
+       digitalWrite(led,LOW);
+       break;
+      }
+      digitalWrite(led,HIGH);
+      delay(1000);
+      digitalWrite(led,LOW);
+      delay(500);
+    }
+    digitalWrite(led,LOW);
+}
+
+void checkSOSSwitchStatus() {
+  
+  buttonState = 0;
+  if(digitalRead(sos)){
+    previousMillis = millis();
+    buttonState = 1;
+    while((millis()-previousMillis)<=DURATION_IN_MILLIS){
+      if(!(digitalRead(sos))){
+        buttonState = 2;
+        break;
+      }
+    }
+  }
+  
+  if(!buttonState){
+    // TODO nothing is pressed
+  }else if(buttonState == 1){
+    emergencyAction();
+  }else if(buttonState ==2){
+    //TODO button is pressed short
+  }
+}
+
+void SMSsender(String n, String txt) {
+
+    String message = "\nLat: " + lat + ",\nLong: " + lng;
+    message = txt + message + "\n\nhttps://www.google.com/maps/search/?api=1&query=" + lat + "," + lng;
+    Serial.println("AT+CMGS=\""+n+"\"");
+    while(Serial.read()!='>');
+    Serial.print(message);
+    Serial.write(0x1A);
+    Serial.write(0x0D);
+    Serial.write(0x0A);
+}
