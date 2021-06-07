@@ -1,0 +1,263 @@
+#include <Servo.h>
+#include <LiquidCrystal.h>
+
+
+#define S0 2
+#define S1 3
+#define S2 4
+#define S3 5
+#define setupButton 12
+#define sensorOut 6
+
+int reds[3] = {0,0,0};
+int greens[3] = {0,0,0};
+int blues[3] = {0,0,0};
+
+LiquidCrystal lcd(A5, A4, A3, A2, A1, A0);
+Servo topServo;
+Servo bottomServo;
+
+void setup() {
+  
+  Serial.begin(9600);
+
+  lcd.begin(16, 2);
+  
+  topServo.attach(7);
+  bottomServo.attach(8);
+
+  pinMode(S0, OUTPUT);
+  pinMode(S1, OUTPUT);
+  pinMode(S2, OUTPUT);
+  pinMode(S3, OUTPUT);
+  pinMode(sensorOut, INPUT);
+  pinMode(setupButton, INPUT);
+
+  // Setting frequency-scaling to 20%
+  digitalWrite(S0, HIGH);
+  digitalWrite(S1, LOW);
+
+  setupColors();
+}
+
+
+void loop() {
+  
+  topServo.write(180);
+  delay(1000);
+
+  topServo.write(90);
+  delay(1000);
+
+  int colorIndex = 0;
+  float distance = -1;
+
+  for(int i=0; i<3; i++) {
+    
+    if (distance == -1) {
+
+      distance = matchValueWithColorAt(i);
+      colorIndex = i;
+    }
+    else {
+
+      float newDistance = matchValueWithColorAt(i);
+      if (newDistance < distance) {
+        distance = newDistance;
+        colorIndex = i;
+      }
+    }
+  }
+
+  switch (colorIndex) {
+
+    case 0:
+      bottomServo.write(50);
+      Serial.println("Color 1");
+      break;
+
+    case 1:
+      bottomServo.write(90);
+      Serial.println("Color 2");
+      break;
+
+    case 2:
+      bottomServo.write(130);
+      Serial.println("Color 3");
+      break;
+
+    default:
+      break;
+  }
+  delay(1000);
+  topServo.write(0);
+  delay(2000);
+}
+
+void setupColors() {
+
+  topServo.write(90);
+  delay(2000);
+
+  Serial.println("Place Ball 1 and press Button...");
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Place Ball 1");
+  lcd.setCursor(0,1);
+  lcd.print("and press Button");
+
+  while (digitalRead(setupButton)== HIGH){}
+  topServo.write(180);
+  delay(1000);
+
+  topServo.write(90);
+  delay(1000);
+
+  readColor(0);
+  topServo.write(0);
+  delay(2000);
+
+  topServo.write(90);
+  delay(2000);
+  Serial.println("Place Ball 2 and press Button...");
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Place Ball 2");
+  lcd.setCursor(0,1);
+  lcd.print("and press Button");
+
+  while (digitalRead(setupButton) == HIGH){}
+
+  topServo.write(180);
+  delay(1000);
+
+  topServo.write(90);
+  delay(1000);
+
+  readColor(1);
+  topServo.write(0);
+  delay(2000);
+
+
+  topServo.write(90);
+  delay(2000);
+  Serial.println("Place Ball 3 and press Button...");
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Place Ball 3");
+  lcd.setCursor(0,1);
+  lcd.print("and press Button");
+
+  while (digitalRead(setupButton) == HIGH){}
+
+  topServo.write(180);
+  delay(1000);
+
+  topServo.write(90);
+  delay(1000);
+
+  readColor(2);
+
+  topServo.write(0);
+  delay(2000);
+  topServo.write(90);
+  Serial.println("Setup Complete");
+
+  for(int i=0; i<3; i++) {
+
+    Serial.print("\nColor: ");
+    Serial.println(i+1);
+    
+    Serial.print("R: ");
+    Serial.print(reds[i]);
+    Serial.print("\t");
+
+    Serial.print("G: ");
+    Serial.print(greens[i]);
+    Serial.print("\t");
+
+    Serial.print("B: ");
+    Serial.print(blues[i]);
+    Serial.println("\n\n");
+  }
+  Serial.println("Press BUTTON to CONTINUE.");
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Press BUTTON");
+  lcd.setCursor(0,1);
+  lcd.print("to CONTINUE");
+
+  while (digitalRead(setupButton) == HIGH){}
+}
+
+void readColor(int index) {
+
+  int frequency = 0;
+  // Setting red filtered photodiodes to be read
+  digitalWrite(S2, LOW);
+  digitalWrite(S3, LOW);
+  // Reading the output frequency
+  frequency = pulseIn(sensorOut, LOW);
+  reds[index] = frequency;
+  // Printing the value on the serial monitor
+  Serial.print("R= ");//printing name
+  Serial.print(frequency);//printing RED color frequency
+  Serial.print("  ");
+  //delay(50);
+
+  // Setting Green filtered photodiodes to be read
+  digitalWrite(S2, HIGH);
+  digitalWrite(S3, HIGH);
+  // Reading the output frequency
+  frequency = pulseIn(sensorOut, LOW);
+  greens[index] = frequency;
+  // Printing the value on the serial monitor
+  Serial.print("G= ");//printing name
+  Serial.print(frequency);//printing RED color frequency
+  Serial.print("  ");
+  //delay(50);
+
+  // Setting Blue filtered photodiodes to be read
+  digitalWrite(S2, LOW);
+  digitalWrite(S3, HIGH);
+  // Reading the output frequency
+  frequency = pulseIn(sensorOut, LOW);
+  blues[index] = frequency;
+  // Printing the value on the serial monitor
+  Serial.print("B= ");//printing name
+  Serial.print(frequency);//printing RED color frequency
+  Serial.println("  ");
+  //delay(50);
+}
+
+float matchValueWithColorAt(int index) {
+  
+  int frequency = 0;
+
+  digitalWrite(S2, LOW);
+  digitalWrite(S3, LOW);
+  frequency = pulseIn(sensorOut, LOW);
+  int red = frequency;
+  
+  digitalWrite(S2, HIGH);
+  digitalWrite(S3, HIGH);
+  frequency = pulseIn(sensorOut, LOW);
+  int green = frequency;
+
+  digitalWrite(S2, LOW);
+  digitalWrite(S3, HIGH);
+  frequency = pulseIn(sensorOut, LOW);
+  int blue = frequency;
+
+  int distanceRed = reds[index] - red;
+  int distanceGreen = greens[index] - green;
+  int distanceBlue = blues[index] - blue;
+
+  int sop = pow(distanceRed,2) + pow(distanceGreen,2) + pow(distanceBlue,2);
+
+  return sqrt(sop);
+}
